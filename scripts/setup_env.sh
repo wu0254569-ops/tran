@@ -29,4 +29,4 @@ conda run -n "${ENV_NAME}" python -m pip install \
   safetensors \
   sentencepiece
 
-echo "Environment '${ENV_NAME}' is ready."
+echo "En/home/play/build/forward/原始系统提示词/核心.mdvironment '${ENV_NAME}' is ready."

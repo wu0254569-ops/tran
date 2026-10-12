@@ -12,11 +12,17 @@ from typing import Any
 
 @dataclass
 class Observation:
-    """A raw screenshot of the environment."""
+    """A snapshot of the environment.
 
-    image: Any  # PIL.Image.Image
+    In text mode only `text` is populated; in image mode `image` is set. Both
+    may be present. `board` carries the structured grid for logging / scoring.
+    """
+
+    image: Any = None  # PIL.Image.Image | None
+    text: str = ""
     score: int = 0
     over: bool = False
+    board: Any = None  # list[list[int]] | None
 
 
 @dataclass

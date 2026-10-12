@@ -41,10 +41,18 @@ model:
     weight_decay: 0.0
 
 loss:
-  mode: similarity      # similarity | cross_entropy
-  similarity: cosine
-  direction: pull_right # pull_right | push_apart  (see 核心.md; to be confirmed)
-  scale: 1.0
+  mode: similarity      # cosine similarity pull (see 核心.md)
+  metric: cosine        # cosine | dot | mse
+  direction: pull       # pull (拉近) | push
+  target: token_embedding
+
+perception:
+  mode: text            # text | image
+  keep_vision: true     # the vision path is kept but off in text mode
+
+round:
+  max_rounds: 5
+  max_new_tokens: 96
 
 training:
   update_timing: immediate          # update right after the model decides to fine-tune
