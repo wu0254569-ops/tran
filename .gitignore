@@ -1,0 +1,24 @@
+# Model weights / caches (large artifacts, not source)
+model/
+*.safetensors
+*.bin
+__pycache__/
+*.pyc
+
+# Python environments
+.venv/
+venv/
+
+# Run artifacts
+logs/
+runs/
+checkpoints/
+outputs/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local backups
+*.bak
