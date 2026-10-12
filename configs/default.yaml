@@ -1,0 +1,57 @@
+# Project configuration. All tunable parameters live here (no hard-coding in code).
+project:
+  name: nllm-custom-loss
+  seed: 42
+
+paths:
+  model_dir: model
+  web_2048: web/2048/index.html
+  logs_dir: logs
+  short_term_memory: logs/memory/short_term.json
+  long_term_memory: logs/memory/long_term.json
+  lora_output_dir: logs/lora
+
+game:
+  type: game2048
+  # Actions are single words to make action-token embeddings easy to compare.
+  action_words: [up, down, left, right]
+  seed: 42
+  viewport:
+    width: 720
+    height: 900
+  screenshot_full_page: true
+
+model:
+  name: FastVLM-0.5B
+  dtype: bfloat16        # bfloat16 | float32
+  device: cpu
+  image_token_index: -200
+  max_new_tokens: 128
+  trust_remote_code: true
+  lora:
+    enabled: true
+    r: 8
+    alpha: 16
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj]
+  dropout: 0.0
+  optimizer:
+    name: adamw
+    lr: 0.0001
+    weight_decay: 0.0
+
+loss:
+  mode: similarity      # similarity | cross_entropy
+  similarity: cosine
+  direction: pull_right # pull_right | push_apart  (see 核心.md; to be confirmed)
+  scale: 1.0
+
+training:
+  update_timing: immediate          # update right after the model decides to fine-tune
+  model_decides_finetune: true      # the model chooses whether to fine-tune
+  backward_randomness: false        # reserved; implement within 3 rounds
+  backward_randomness_strength: 0.0
+
+memory:
+  short_term_full_overwrite: true   # short-term memory = model cache, fully overwritten each round
+  long_term_retrieval: fuzzy        # exact | fuzzy

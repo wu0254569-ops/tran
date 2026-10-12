@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2048 (offline)</title>
+  <style>
+    /* High-contrast layout so a small VLM can read the board from a screenshot. */
+    :root {
+      --bg: #faf8ef;
+      --board: #bbada0;
+      --empty: #cdc1b4;
+      --text: #776e65;
+      --text-light: #f9f6f2;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+    }
+    #app {
+      width: 720px;
+      margin: 0 auto;
+      padding: 24px 24px 32px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 56px; margin: 0; letter-spacing: 2px; }
+    .scores { display: flex; gap: 12px; }
+    .score-box {
+      background: var(--board);
+      color: var(--text-light);
+      padding: 8px 20px;
+      border-radius: 6px;
+      text-align: center;
+      min-width: 120px;
+    }
+    .score-box .label { font-size: 14px; text-transform: uppercase; opacity: 0.85; }
+    .score-box .value { font-size: 28px; font-weight: bold; }
+    #board {
+      position: relative;
+      width: 672px;
+      height: 672px;
+      background: var(--board);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .grid-bg, .tiles {
+      position: absolute;
+      top: 12px; left: 12px;
+      width: 648px; height: 648px;
+    }
+    .grid-bg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .grid-bg .cell { background: var(--empty); border-radius: 6px; }
+    .tile {
+      position: absolute;
+      width: 153px; height: 153px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      font-size: 56px; font-weight: bold;
+      background: #eee4da; color: var(--text);
+      transition: none;
+    }
+    #status {
+      margin-top: 16px;
+      font-size: 22px;
+      min-height: 28px;
+      font-weight: bold;
+    }
+    #legend { margin-top: 8px; font-size: 16px; color: #9a8e83; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>2048</h1>
+      <div class="scores">
+        <div class="score-box"><div class="label">Score</div><div class="value" id="score">0</div></div>
+        <div class="score-box"><div class="label">Best</div><div class="value" id="best">0</div></div>
+      </div>
+    </header>
+    <div id="board">
+      <div class="grid-bg" id="grid"></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <div id="status"></div>
+    <div id="legend">Keys: ArrowLeft / ArrowRight / ArrowUp / ArrowDown</div>
+  </div>
+
+  <script>
+    "use strict";
+
+    // Deterministic RNG (mulberry32) so a given seed always yields the same run.
+    function makeRng(seed) {
+      let a = seed >>> 0;
+      return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const TILE_COLORS = {
+      2: ["#eee4da", "#776e65"], 4: ["#ede0c8", "#776e65"],
+      8: ["#f2b179", "#f9f6f2"], 16: ["#f59563", "#f9f6f2"],
+      32: ["#f67c5f", "#f9f6f2"], 64: ["#f65e3b", "#f9f6f2"],
+      128: ["#edcf72", "#f9f6f2"], 256: ["#edcc61", "#f9f6f2"],
+      512: ["#edc850", "#f9f6f2"], 1024: ["#edc53f", "#f9f6f2"],
+      2048: ["#edc22e", "#f9f6f2"]
+    };
+
+    const params = new URLSearchParams(location.search);
+    const SEED = parseInt(params.get("seed") || "42", 10);
+
+    let grid, score, best = 0, over = false, rng;
+
+    function newGame() {
+      rng = makeRng(SEED);
+      grid = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+      score = 0; over = false;
+      addRandomTile(); addRandomTile();
+      render();
+    }
+
+    function emptyCells() {
+      const cells = [];
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (!grid[r][c]) cells.push([r, c]);
+      return cells;
+    }
+
+    function addRandomTile() {
+      const cells = emptyCells();
+      if (!cells.length) return;
+      const [r, c] = cells[Math.floor(rng() * cells.length)];
+      grid[r][c] = rng() < 0.9 ? 2 : 4;
+    }
+
+    // Collapse a single line toward the front; returns [newLine, gainedScore].
+    function collapse(line) {
+      const vals = line.filter((v) => v);
+      const out = [];
+      let gained = 0;
+      for (let i = 0; i < vals.length; i++) {
+        if (i + 1 < vals.length && vals[i] === vals[i + 1]) {
+          const merged = vals[i] * 2;
+          out.push(merged);
+          gained += merged;
+          i++;
+        } else {
+          out.push(vals[i]);
+        }
+      }
+      while (out.length < 4) out.push(0);
+      return [out, gained];
+    }
+
+    function transpose(g) {
+      const t = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) t[c][r] = g[r][c];
+      return t;
+    }
+
+    function moved(a, b) {
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (a[r][c] !== b[r][c]) return true;
+      return false;
+    }
+
+    // dir: one of up | down | left | right
+    function applyMove(dir) {
+      if (over) return false;
+      const before = grid.map((row) => row.slice());
+      let g = grid.map((row) => row.slice());
+      let gained = 0;
+
+      if (dir === "up" || dir === "down") g = transpose(g);
+      if (dir === "right" || dir === "down") g = g.map((row) => row.slice().reverse());
+
+      let total = 0;
+      g = g.map((row) => { const [out, gained] = collapse(row); total += gained; return out; });
+
+      if (dir === "right" || dir === "down") g = g.map((row) => row.slice().reverse());
+      if (dir === "up" || dir === "down") g = transpose(g);
+
+      if (!moved(before, g)) return false;
+      grid = g;
+      score += total;
+      best = Math.max(best, score);
+      addRandomTile();
+      if (isGameOver()) over = true;
+      render();
+      return true;
+    }
+
+    function canMove() {
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+        if (!grid[r][c]) return true;
+        if (c + 1 < 4 && grid[r][c] === grid[r][c + 1]) return true;
+        if (r + 1 < 4 && grid[r][c] === grid[r + 1][c]) return true;
+      }
+      return false;
+    }
+
+    function isGameOver() { return !canMove(); }
+
+    const tilesEl = document.getElementById("tiles");
+    const gridEl = document.getElementById("grid");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const statusEl = document.getElementById("status");
+
+    for (let i = 0; i < 16; i++) {
+      const d = document.createElement("div");
+      d.className = "cell";
+      gridEl.appendChild(d);
+    }
+
+    function render() {
+      tilesEl.innerHTML = "";
+      const step = 165; // 153px tile + 12px gap
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+        const v = grid[r][c];
+        if (!v) continue;
+        const el = document.createElement("div");
+        el.className = "tile";
+        const [bg, fg] = TILE_COLORS[v] || ["#3c3a32", "#f9f6f2"];
+        el.style.background = bg;
+        el.style.color = fg;
+        el.style.left = (c * step) + "px";
+        el.style.top = (r * step) + "px";
+        el.style.fontSize = v > 999 ? "44px" : "56px";
+        el.textContent = v;
+        tilesEl.appendChild(el);
+      }
+      scoreEl.textContent = String(score);
+      bestEl.textContent = String(best);
+      statusEl.textContent = over ? "GAME OVER" : "";
+      document.title = over ? "2048 - GAME OVER" : "2048 - " + score;
+    }
+
+    document.addEventListener("keydown", (e) => {
+      const map = {
+        ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+        a: "left", d: "right", w: "up", s: "down"
+      };
+      const dir = map[e.key];
+      if (dir) { e.preventDefault(); applyMove(dir); }
+    });
+
+    // Programmatic surface for the automation / operation script.
+    window.game2048 = {
+      move: applyMove,
+      reset: newGame,
+      getState: () => ({ grid: grid.map((r) => r.slice()), score, best, over, seed: SEED }),
+      isOver: () => over,
+      score: () => score
+    };
+
+    newGame();
+  </script>
+</body>
+</html>
